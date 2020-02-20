@@ -79,6 +79,13 @@ struct gasket_sysfs_attribute {
 		.data.attr_type = _attr_type                                   \
 	}
 
+#define GASKET_SYSFS_RW(_name, _show_function, _store_function, _attr_type)    \
+	{                                                                      \
+		.attr = __ATTR(_name, S_IWUSR | S_IWGRP | S_IRUGO,             \
+				_show_function, _store_function),              \
+		.data.attr_type = _attr_type                                   \
+	}
+
 /* Initializes the Gasket sysfs subsystem.
  *
  * Description: Performs one-time initialization. Must be called before usage
@@ -152,8 +159,8 @@ void gasket_sysfs_put_device_data(struct device *device,
  * Returns the Gasket sysfs attribute associated with the kernel device
  * attribute and device structure itself. Upon success, this call will take a
  * reference to internal sysfs data that must be released with a call to
- * gasket_sysfs_get_device_data. While this reference is held, the underlying
- * device sysfs information/structure will remain valid/will not be deleted.
+ * gasket_sysfs_put_attr. While this reference is held, the underlying device
+ * sysfs information/structure will remain valid/will not be deleted.
  */
 struct gasket_sysfs_attribute *
 gasket_sysfs_get_attr(struct device *device, struct device_attribute *attr);
