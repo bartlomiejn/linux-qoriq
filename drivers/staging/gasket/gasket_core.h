@@ -14,6 +14,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/platform_device.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 
@@ -50,8 +51,7 @@ enum gasket_interrupt_packing {
 /* Type of the interrupt supported by the device. */
 enum gasket_interrupt_type {
 	PCI_MSIX = 0,
-	PCI_MSI = 1,
-	PLATFORM_WIRE = 2,
+	DEVICE_MANAGED = 1, /* Managed externally in device driver */
 };
 
 /*
@@ -67,12 +67,6 @@ struct gasket_interrupt_desc {
 	u64 reg;
 	/* The location of this interrupt inside register reg, if packed. */
 	int packing;
-};
-
-/* Offsets to the wire interrupt handling registers */
-struct gasket_wire_interrupt_offsets {
-	u64 pending_bit_array;
-	u64 mask_array;
 };
 
 /*
@@ -266,8 +260,14 @@ struct gasket_dev {
 	/* Device info */
 	struct device *dev;
 
-	/* PCI subsystem metadata. */
+	/* DMA device to use, may be same as above or a parent */
+	struct device *dma_dev;
+
+	/* PCI device pointer for PCI devices */
 	struct pci_dev *pci_dev;
+
+	/* Platform device pointer for platform devices */
+	struct platform_device *platform_dev;
 
 	/* This device's index into internal_desc->devs. */
 	int dev_idx;
@@ -383,9 +383,6 @@ struct gasket_driver_desc {
 	 * Coherent buffer description.
 	 */
 	struct gasket_coherent_buffer_desc coherent_buffer_description;
-
-	/* Offset of wire interrupt registers. */
-	const struct gasket_wire_interrupt_offsets *wire_interrupt_offsets;
 
 	/* Interrupt type. (One of gasket_interrupt_type). */
 	int interrupt_type;
@@ -543,6 +540,17 @@ int gasket_pci_add_device(struct pci_dev *pci_dev,
 /* Remove a PCI gasket device. */
 void gasket_pci_remove_device(struct pci_dev *pci_dev);
 
+/* Add a platform gasket device. */
+int gasket_platform_add_device(struct platform_device *pdev,
+			       struct gasket_dev **gasket_devp);
+
+/* Remove a platform gasket device. */
+void gasket_platform_remove_device(struct platform_device *pdev);
+
+/* Set DMA device to use (if different from PCI/platform device) */
+void gasket_set_dma_device(struct gasket_dev *gasket_dev,
+			   struct device *dma_dev);
+
 /* Enable a Gasket device. */
 int gasket_enable_device(struct gasket_dev *gasket_dev);
 
@@ -587,28 +595,28 @@ const char *gasket_num_name_lookup(uint num,
 				   const struct gasket_num_name *table);
 
 /* Handy inlines */
-static inline ulong gasket_dev_read_64(struct gasket_dev *gasket_dev, int bar,
+static inline u64 gasket_dev_read_64(struct gasket_dev *gasket_dev, int bar,
 				       ulong location)
 {
-	return readq(&gasket_dev->bar_data[bar].virt_base[location]);
+	return readq_relaxed(&gasket_dev->bar_data[bar].virt_base[location]);
 }
 
 static inline void gasket_dev_write_64(struct gasket_dev *dev, u64 value,
 				       int bar, ulong location)
 {
-	writeq(value, &dev->bar_data[bar].virt_base[location]);
+	writeq_relaxed(value, &dev->bar_data[bar].virt_base[location]);
 }
 
 static inline void gasket_dev_write_32(struct gasket_dev *dev, u32 value,
 				       int bar, ulong location)
 {
-	writel(value, &dev->bar_data[bar].virt_base[location]);
+	writel_relaxed(value, &dev->bar_data[bar].virt_base[location]);
 }
 
 static inline u32 gasket_dev_read_32(struct gasket_dev *dev, int bar,
 				     ulong location)
 {
-	return readl(&dev->bar_data[bar].virt_base[location]);
+	return readl_relaxed(&dev->bar_data[bar].virt_base[location]);
 }
 
 static inline void gasket_read_modify_write_64(struct gasket_dev *dev, int bar,
